@@ -162,54 +162,79 @@ def read_data(file_path, prepare_for='sdt', display=False):
 
     return data
 
+def apply_hierarchical_sdt_model(df):
+    import pymc as pm
+    import pytensor.tensor as at
+    import numpy as np
 
-def apply_hierarchical_sdt_model(data):
-    """Apply a hierarchical Signal Detection Theory model using PyMC.
-    
-    This function implements a Bayesian hierarchical model for SDT analysis,
-    allowing for both group-level and individual-level parameter estimation.
-    
-    Args:
-        data: DataFrame containing SDT summary statistics
+    df = df.copy()
+
+    n_participants = df["pnum"].nunique()
+    participant_idx = df["pnum"].astype("category").cat.codes.values
+
+    difficulty = df["difficulty"].values
+    stim_type = df["stimulus_type"].values
+
+    hits = df["hits"].values
+    misses = df["misses"].values
+    false_alarms = df["false_alarms"].values
+    correct_rejections = df["correct_rejections"].values
+
+    n_signal = hits + misses
+    n_noise = false_alarms + correct_rejections
+
+    with pm.Model() as model:
+        # Priors for population-level effects on d′
+        intercept_d = pm.Normal("intercept_d", mu=0, sigma=1)
+        beta_difficulty = pm.Normal("beta_difficulty", mu=0, sigma=1)
+        beta_stim = pm.Normal("beta_stim", mu=0, sigma=1)
+
+        # Linear model for d′
+        d_prime = intercept_d + beta_difficulty * difficulty + beta_stim * stim_type
+
+        # Shared criterion per subject
+        criterion = pm.Normal("criterion", mu=0, sigma=1, shape=n_participants)
+        c = criterion[participant_idx]
+
+        # Compute hit and FA rates via inverse probit
+        hit_rate = pm.Deterministic("hit_rate", 1 - pm.math.sigmoid(d_prime / 2 - c))
+        fa_rate = pm.Deterministic("fa_rate", 1 - pm.math.sigmoid(-d_prime / 2 - c))
+
+        # Observed data
+        pm.Binomial("hits_obs", n=n_signal, p=hit_rate, observed=hits)
+        pm.Binomial("fa_obs", n=n_noise, p=fa_rate, observed=false_alarms)
+
+        trace = pm.sample(1000, tune=1000, target_accept=0.95, return_inferencedata=True)
         
-    Returns:
-        PyMC model object
-    """
-    # Get unique participants and conditions
-    P = len(data['pnum'].unique())
-    C = len(data['condition'].unique())
-    
-    # Define the hierarchical model
-    with pm.Model() as sdt_model:
-        # Group-level parameters
-        mean_d_prime = pm.Normal('mean_d_prime', mu=0.0, sigma=1.0, shape=C)
-        stdev_d_prime = pm.HalfNormal('stdev_d_prime', sigma=1.0)
-        
-        mean_criterion = pm.Normal('mean_criterion', mu=0.0, sigma=1.0, shape=C)
-        stdev_criterion = pm.HalfNormal('stdev_criterion', sigma=1.0)
-        
-        # Individual-level parameters
-        d_prime = pm.Normal('d_prime', mu=mean_d_prime, sigma=stdev_d_prime, shape=(P, C))
-        criterion = pm.Normal('criterion', mu=mean_criterion, sigma=stdev_criterion, shape=(P, C))
-        
-        # Calculate hit and false alarm rates using SDT
-        hit_rate = pm.math.invlogit(d_prime - criterion)
-        false_alarm_rate = pm.math.invlogit(-criterion)
-                
-        # Likelihood for signal trials
-        # Note: pnum is 1-indexed in the data, but needs to be 0-indexed for the model, so we change the indexing here.  The results table will show participant numbers starting from 0, so we need to interpret the results accordingly.
-        pm.Binomial('hit_obs', 
-                   n=data['nSignal'], 
-                   p=hit_rate[data['pnum']-1, data['condition']], 
-                   observed=data['hits'])
-        
-        # Likelihood for noise trials
-        pm.Binomial('false_alarm_obs', 
-                   n=data['nNoise'], 
-                   p=false_alarm_rate[data['pnum']-1, data['condition']], 
-                   observed=data['false_alarms'])
-    
-    return sdt_model
+        import arviz as az
+
+        # Print convergence diagnostics
+        summary = az.summary(trace, round_to=2)
+        print(summary)
+
+        # Optional: save it to outputs folder
+        summary.to_csv("../outputs/sdt_posterior_summary.csv")
+
+        az.plot_posterior(trace, var_names=["intercept_d", "beta_difficulty", "beta_stim"])
+        plt.tight_layout()
+        plt.savefig("../outputs/sdt_posteriors.png", dpi=300)
+        plt.show()
+
+
+
+    return trace
+
+import matplotlib.pyplot as plt
+az.plot_posterior(
+    trace,
+    var_names=["intercept_d", "beta_difficulty", "beta_stim"],
+    hdi_prob=0.95,
+    figsize=(8, 4)
+)
+plt.tight_layout()
+plt.savefig("../outputs/sdt_posteriors.png", dpi=300)
+plt.show()
+
 
 def draw_delta_plots(data, pnum):
     """Draw delta plots comparing RT distributions between condition pairs.
@@ -234,7 +259,7 @@ def draw_delta_plots(data, pnum):
                             figsize=(4*n_conditions, 4*n_conditions))
     
     # Create output directory
-    OUTPUT_DIR = Path(__file__).parent.parent.parent / 'outputs'
+    OUTPUT_DIR = Path(__file__).parent.parent.parent / 'output'
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     # Define marker style for plots
