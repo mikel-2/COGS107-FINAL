@@ -207,7 +207,7 @@ def apply_hierarchical_sdt_model(df):
         trace = pm.sample(1000, tune=1000, target_accept=0.95, return_inferencedata=True)
         
         import arviz as az
-
+        
         # Print convergence diagnostics
         summary = az.summary(trace, round_to=2)
         print(summary)
