@@ -217,7 +217,7 @@ def apply_hierarchical_sdt_model(df):
 
         import matplotlib.pyplot as plt
         az.plot_posterior(trace, var_names=["intercept_d", "beta_difficulty", "beta_stim"], hdi_prob=0.95)
-        plt.suptitle("Posterior Distributions of SDT Effects", y=1.02)
+        plt.suptitle("Posterior Distributions of SDT Effects", y=1.1)
         plt.tight_layout()
         plt.savefig("../outputs/sdt_posteriors.png", dpi=300)
         plt.show()
