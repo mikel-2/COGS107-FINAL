@@ -215,7 +215,9 @@ def apply_hierarchical_sdt_model(df):
         # Optional: save it to outputs folder
         summary.to_csv("../outputs/sdt_posterior_summary.csv")
 
-        az.plot_posterior(trace, var_names=["intercept_d", "beta_difficulty", "beta_stim"])
+        import matplotlib.pyplot as plt
+        az.plot_posterior(trace, var_names=["intercept_d", "beta_difficulty", "beta_stim"], hdi_prob=0.95)
+        plt.suptitle("Posterior Distributions of SDT Effects", y=1.02)
         plt.tight_layout()
         plt.savefig("../outputs/sdt_posteriors.png", dpi=300)
         plt.show()
@@ -224,16 +226,7 @@ def apply_hierarchical_sdt_model(df):
 
     return trace
 
-import matplotlib.pyplot as plt
-az.plot_posterior(
-    trace,
-    var_names=["intercept_d", "beta_difficulty", "beta_stim"],
-    hdi_prob=0.95,
-    figsize=(8, 4)
-)
-plt.tight_layout()
-plt.savefig("../outputs/sdt_posteriors.png", dpi=300)
-plt.show()
+
 
 
 def draw_delta_plots(data, pnum):
@@ -339,6 +332,15 @@ def draw_delta_plots(data, pnum):
 
 # Main execution
 if __name__ == "__main__":
-    file_to_print = Path(__file__).parent / 'README.md'
-    with open(file_to_print, 'r') as file:
-        print(file.read())
+    df = read_data("../data/data.csv", prepare_for="sdt", display=True)
+    df["difficulty"] = df["condition"].apply(lambda c: 0 if c in [0, 1] else 1)
+    df["stimulus_type"] = df["condition"].apply(lambda c: 0 if c in [0, 2] else 1)
+
+    trace = apply_hierarchical_sdt_model(df)
+
+    import matplotlib.pyplot as plt
+    az.plot_posterior(trace, var_names=["intercept_d", "beta_difficulty", "beta_stim"], hdi_prob=0.95)
+    plt.suptitle("Posterior Distributions of SDT Effects", y=1.00)
+    plt.tight_layout()
+    plt.savefig("../outputs/sdt_posteriors.png", dpi=300)
+    plt.show()
