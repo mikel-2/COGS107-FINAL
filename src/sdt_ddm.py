@@ -197,8 +197,8 @@ def apply_hierarchical_sdt_model(df):
         c = criterion[participant_idx]
 
         # Compute hit and FA rates via inverse probit
-        hit_rate = pm.Deterministic("hit_rate", 1 - pm.math.sigmoid(d_prime / 2 - c))
-        fa_rate = pm.Deterministic("fa_rate", 1 - pm.math.sigmoid(-d_prime / 2 - c))
+        hit_rate = pm.Deterministic("hit_rate", pm.math.sigmoid(d_prime / 2 - c))
+        fa_rate = pm.Deterministic("fa_rate", pm.math.sigmoid(-d_prime / 2 - c))
 
         # Observed data
         pm.Binomial("hits_obs", n=n_signal, p=hit_rate, observed=hits)
@@ -252,7 +252,7 @@ def draw_delta_plots(data, pnum):
                             figsize=(4*n_conditions, 4*n_conditions))
     
     # Create output directory
-    OUTPUT_DIR = Path(__file__).parent.parent.parent / 'output'
+    OUTPUT_DIR = Path(__file__).parent.parent / 'outputs'
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     # Define marker style for plots
@@ -332,15 +332,26 @@ def draw_delta_plots(data, pnum):
 
 # Main execution
 if __name__ == "__main__":
+    # === Run SDT model ===
     df = read_data("../data/data.csv", prepare_for="sdt", display=True)
+
+    # Add difficulty and stimulus_type from condition
     df["difficulty"] = df["condition"].apply(lambda c: 0 if c in [0, 1] else 1)
     df["stimulus_type"] = df["condition"].apply(lambda c: 0 if c in [0, 2] else 1)
 
     trace = apply_hierarchical_sdt_model(df)
 
+    # === Posterior plot ===
     import matplotlib.pyplot as plt
     az.plot_posterior(trace, var_names=["intercept_d", "beta_difficulty", "beta_stim"], hdi_prob=0.95)
-    plt.suptitle("Posterior Distributions of SDT Effects", y=1.00)
+    plt.suptitle("Posterior Distributions of SDT Effects", y=1.02)
     plt.tight_layout()
     plt.savefig("../outputs/sdt_posteriors.png", dpi=300)
     plt.show()
+
+    # === Delta plots for all participants ===
+    df_delta = read_data("../data/data.csv", prepare_for="delta plots", display=False)
+
+    for pid in df_delta["pnum"].unique():
+        print(f"Generating delta plot for participant {pid}")
+        draw_delta_plots(df_delta, pnum=pid)
